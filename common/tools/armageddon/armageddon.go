@@ -717,7 +717,7 @@ func pullBlocksFromAssemblerAndCollectStatistics(userConfig *UserConfig, pullFro
 
 	gRPCAssemblerClientConn, err = gRPCAssemblerClient.Dial(endpointToPullFrom)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to create a gRPC client connection to assembler %d: %v", i+1, err)
+		fmt.Fprintf(os.Stderr, "failed to create a gRPC client connection to assembler %d: %v\n", i+1, err)
 		os.Exit(3)
 	}
 
@@ -1036,7 +1036,7 @@ func receiveResponseFromAssembler(userConfig *UserConfig, txsMap *protectedMap, 
 
 	gRPCAssemblerClientConn, err = gRPCAssemblerClient.Dial(endpointToPullFrom)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to create a gRPC client connection to assembler %d: %v", i+1, err)
+		fmt.Fprintf(os.Stderr, "failed to create a gRPC client connection to assembler %d: %v\n", i+1, err)
 		os.Exit(3)
 	}
 
