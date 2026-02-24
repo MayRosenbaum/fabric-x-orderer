@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package blkstorage
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/hyperledger/fabric-x-common/tools/fileutil"
@@ -149,6 +150,7 @@ func (p *BlockStoreProvider) List() ([]string, error) {
 // Close closes the BlockStoreProvider
 func (p *BlockStoreProvider) Close() {
 	p.leveldbProvider.Close()
+	fmt.Printf("p.leveldbProvider.Close()")
 }
 
 func dataFormatVersion(indexConfig *IndexConfig) string {

@@ -15,6 +15,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hyperledger/fabric-x-orderer/config"
+	config_protos "github.com/hyperledger/fabric-x-orderer/config/protos"
+	"github.com/hyperledger/fabric-x-orderer/node"
+
 	smartbft_wal "github.com/hyperledger-labs/SmartBFT/pkg/wal"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
@@ -43,6 +47,7 @@ type Signer interface {
 
 type Net interface {
 	Stop()
+	Address() string
 }
 
 type Batcher struct {
@@ -60,6 +65,7 @@ type Batcher struct {
 	Ledger                    *node_ledger.BatchLedgerArray
 	ConfigStore               *configstore.Store
 	config                    *node_config.BatcherNodeConfig
+	fullConfig                *config.Configuration
 	batchers                  []node_config.BatcherInfo
 	signer                    Signer
 	wal                       *smartbft_wal.WriteAheadLogFile
@@ -85,6 +91,32 @@ func (b *Batcher) ConfigSequence() types.ConfigSequence {
 	return types.ConfigSequence(b.config.Bundle.ConfigtxValidator().Sequence())
 }
 
+func (b *Batcher) Address() string {
+	if b.Net == nil {
+		return ""
+	}
+
+	return b.Net.Address()
+}
+
+func (b *Batcher) StartBatcherService() <-chan struct{} {
+	srv := node.CreateGRPCBatcher(b.config)
+	b.Net = srv
+
+	protos.RegisterRequestTransmitServer(srv.Server(), b)
+	protos.RegisterBatcherControlServiceServer(srv.Server(), b)
+	orderer.RegisterAtomicBroadcastServer(srv.Server(), b)
+
+	stop := make(chan struct{})
+
+	go func() {
+		srv.Start()
+		close(stop)
+	}()
+
+	return stop
+}
+
 func (b *Batcher) Run() {
 	b.stopChan = make(chan struct{})
 
@@ -96,6 +128,8 @@ func (b *Batcher) Run() {
 	b.logger.Infof("Starting batcher")
 	b.batcher.Start()
 	b.metrics.Start()
+	// TODO: use the fabric logger
+	utils.StopSignalListen(b.stopChan, b, b.logger, b.Address())
 }
 
 func (b *Batcher) Stop() {
@@ -109,7 +143,7 @@ func (b *Batcher) SoftStop() {
 	b.stopOnce.Do(func() {
 		close(b.stopChan)
 		b.controlEventBroadcaster.Stop()
-		b.batcher.Stop()
+		b.batcher.SoftStop()
 		for len(b.stateChan) > 0 {
 			<-b.stateChan // drain state channel
 		}
@@ -160,6 +194,10 @@ func (b *Batcher) replicateDecision() {
 						}
 						b.logger.Infof("Soft stop")
 						go b.SoftStop()
+						b.logger.Infof("Apply config")
+						if err := b.ApplyConfig(lastBlock); err != nil {
+							b.logger.Panicf("Failed applying config: %s", err)
+						}
 						return
 					}
 				} else {
@@ -188,6 +226,96 @@ func (b *Batcher) replicateDecision() {
 		}
 	}
 }
+
+func findBatcherInConfigByShard(shardID types.ShardID, conf *config.Configuration) *config_protos.BatcherNodeConfig {
+	partyID := conf.LocalConfig.NodeLocalConfig.PartyID
+	partyConfig := config.FindParty(partyID, conf)
+	for _, batcher := range partyConfig.BatchersConfig {
+		if types.ShardID(batcher.ShardID) == shardID {
+			return batcher
+		}
+	}
+	return nil
+}
+
+func (b *Batcher) ApplyConfig(lastBlock *common.Block) error {
+	partyID := b.config.PartyId
+	shardID := b.config.ShardId
+
+	newConfig, err := b.fullConfig.BuildNewConfiguration(lastBlock)
+	if err != nil {
+		return errors.Errorf("failed to build new configuration, err: %v\n", err)
+	}
+
+	fmt.Printf("##1\n")
+	// check if party is removed
+	if config.IsPartyEvicted(partyID, newConfig) {
+		b.logger.Infof("Pending admin restart: Party %d is evicted", partyID)
+		return nil
+	}
+	fmt.Printf("##2\n")
+	// check if batcher identity (address or certificates) is changed
+	currBatcherIdentityConfig := findBatcherInConfigByShard(shardID, b.fullConfig)
+	newBatcherIdentityConfig := findBatcherInConfigByShard(shardID, newConfig)
+	isRestartRequired, err := config.IsNodeConfigChangeRestartRequired(currBatcherIdentityConfig, newBatcherIdentityConfig)
+	if err != nil {
+		return errors.Errorf("error apply config, could not decide if node restart is required, err: %v\n", err)
+	}
+
+	fmt.Printf("##3\n")
+	if isRestartRequired {
+		b.logger.Infof("Pending admin restart: identity was changed")
+		return nil
+	}
+
+	fmt.Printf("##4\n")
+	// this is not an admin restart, close net and ledger
+	b.Net.Stop()
+	fmt.Printf("##4.25\n")
+	b.Ledger.Close()
+	fmt.Printf("##4.5\n")
+
+	// create new batcher with the same mempool
+	b.logger.Infof("Going to restart after a config change")
+	newBatcherConfig := newConfig.ExtractBatcherConfig(lastBlock)
+
+	// batcherLogger := flogging.MustGetLogger(fmt.Sprintf("Batcher%dShard%d", newBatcherConfig.PartyId, newBatcherConfig.ShardId))
+	newBatcher := CreateBatcherWithMemPool(newBatcherConfig, newConfig, b.logger, &ConsensusDecisionReplicatorFactory{}, &ConsenterControlEventSenderFactory{}, b.signer, b.batcher.MemPool)
+
+	// prune mempool
+	fmt.Printf("##5\n")
+	newBatcher.batcher.MemPool.Prune(func(req []byte) error {
+		if err := newBatcher.requestsInspectorVerifier.VerifyRequest(req); err != nil {
+			newBatcher.logger.Debugf("Mempool Pruning: failed verifying request with req ID: %s; err: %v", b.requestsInspectorVerifier.RequestID(req), err)
+		}
+		return err
+	})
+
+	// initialize a new batcher
+	ch := newBatcher.StartBatcherService()
+	newBatcher.Run()
+
+	<-ch
+	newBatcher.logger.Infof("Batcher listening on %s", newBatcher.Address())
+	return nil
+}
+
+//func (b *Batcher) StartBatcherServiceWithMemPool(newBatcherConfig *node_config.BatcherNodeConfig, newConfig *config.Configuration) {
+//	srv := node.CreateGRPCBatcher(newBatcherConfig)
+//	batcherLogger := flogging.MustGetLogger(fmt.Sprintf("Batcher%dShard%d", newBatcherConfig.PartyId, newBatcherConfig.ShardId))
+//	newBatcher := CreateBatcherWithMemPool(newBatcherConfig, newConfig, batcherLogger, &ConsensusDecisionReplicatorFactory{}, &ConsenterControlEventSenderFactory{}, b.signer, b.batcher.MemPool)
+//
+//	newBatcher.Net = srv
+//
+//	defer newBatcher.Run()
+//	protos.RegisterRequestTransmitServer(srv.Server(), newBatcher)
+//	protos.RegisterBatcherControlServiceServer(srv.Server(), newBatcher)
+//	orderer.RegisterAtomicBroadcastServer(srv.Server(), newBatcher)
+//
+//	srv.Start()
+//
+//	batcherLogger.Infof("Batcher listening on %s", srv.Address())
+//}
 
 func (b *Batcher) GetLatestStateChan() <-chan *state.State {
 	return b.stateChan

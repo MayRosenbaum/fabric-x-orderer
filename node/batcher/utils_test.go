@@ -158,7 +158,8 @@ func createBatchersWithConfigNumber(t *testing.T, num int, shardID types.ShardID
 		}
 		configs = append(configs, conf)
 
-		batcher := batcher.CreateBatcher(conf, logger, batcherNodes[i], stubConsenters[i], &batcher.ConsenterControlEventSenderFactory{}, signer)
+		batcher := batcher.CreateBatcher(conf, nil, logger, stubConsenters[i], &batcher.ConsenterControlEventSenderFactory{}, signer)
+		batcher.Net = batcherNodes[i]
 		batchers = append(batchers, batcher)
 		batcher.Run()
 
@@ -203,7 +204,8 @@ func recoverBatcher(t *testing.T, ca tlsgen.CA, logger *zap.SugaredLogger, conf 
 
 	signer := crypto.ECDSASigner(*newBatcherNode.sk)
 
-	batcher := batcher.CreateBatcher(conf, logger, newBatcherNode, sc, &batcher.ConsenterControlEventSenderFactory{}, signer)
+	batcher := batcher.CreateBatcher(conf, nil, logger, sc, &batcher.ConsenterControlEventSenderFactory{}, signer)
+	batcher.Net = newBatcherNode
 	batcher.Run()
 
 	grpcRegisterAndStart(batcher, newBatcherNode)

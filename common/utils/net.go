@@ -11,8 +11,13 @@ import (
 	"crypto/x509"
 	"fmt"
 	"net"
+	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
+
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"
@@ -120,4 +125,30 @@ func TrimPortFromEndpoint(endpoint string) string {
 	}
 
 	return endpoint
+}
+
+type NodeStopper interface {
+	Stop()
+}
+
+// TODO: pass logger *flogging.FabricLogger
+func StopSignalListen(stopChan chan struct{}, node NodeStopper, logger types.Logger, nodeAddr string) {
+	signalChan := make(chan os.Signal, 1)
+	signal.Notify(signalChan, syscall.SIGTERM)
+
+	go func() {
+		defer signal.Stop(signalChan)
+
+		for {
+			select {
+			case <-signalChan:
+				logger.Infof("SIGTERM signal caught, the node listening on %s is about to shutdown:", nodeAddr)
+				node.Stop()
+				return
+			case <-stopChan:
+				logger.Infof("Exit StopSignalListen routine")
+				return
+			}
+		}
+	}()
 }

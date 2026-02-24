@@ -31,9 +31,11 @@ type MemPool interface {
 	NextRequests(ctx context.Context) [][]byte
 	RemoveRequests(requests ...string)
 	Submit(request []byte) error
+	Halt()
 	Restart(bool)
 	RequestCount() int64
 	Close()
+	Prune(predicate func([]byte) error)
 }
 
 //go:generate counterfeiter -o mocks/state_provider.go . StateProvider
@@ -176,6 +178,17 @@ func (b *BatcherRole) Stop() {
 	b.stopOnce.Do(func() { close(b.stopChan) })
 	b.cancelBatch()
 	b.MemPool.Close()
+	for len(b.termChan) > 0 {
+		<-b.termChan // drain term channel
+	}
+	b.running.Wait()
+}
+
+func (b *BatcherRole) SoftStop() {
+	b.Logger.Infof("Soft Stopping batcher rol")
+	b.stopOnce.Do(func() { close(b.stopChan) })
+	b.cancelBatch()
+	b.MemPool.Halt()
 	for len(b.termChan) > 0 {
 		<-b.termChan // drain term channel
 	}

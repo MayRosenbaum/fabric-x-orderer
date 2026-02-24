@@ -11,6 +11,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
+	"fmt"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -232,7 +233,9 @@ func (gServer *GRPCServer) Start() error {
 
 // Stop stops the underlying grpc.Server
 func (gServer *GRPCServer) Stop() {
+	fmt.Printf("gRPC stop for: %s\n", gServer.address)
 	gServer.server.Stop()
+	fmt.Printf("finished gRPC stop for: %s\n", gServer.address)
 }
 
 // internal function to add a PEM-encoded clientRootCA

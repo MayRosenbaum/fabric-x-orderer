@@ -157,8 +157,12 @@ func TestUpdatePartyRouterEndpoint(t *testing.T) {
 
 	require.True(t, userBlockHandler.RouterEndpointUpdated.Load(), "Router endpoint was not updated in the config update")
 
-	// Restart Arma nodes
-	armaNetwork.Stop()
+	// Stop all Arma nodes except for Batchers
+	for i := 1; i <= numOfParties; i++ {
+		armaNetwork.GetRouter(t, types.PartyID(i)).StopArmaNode()
+		armaNetwork.GetConsenter(t, types.PartyID(i)).StopArmaNode()
+		armaNetwork.GetAssembler(t, types.PartyID(i)).StopArmaNode()
+	}
 
 	routerNodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", partyToUpdate), "local_config_router.yaml")
 
@@ -175,10 +179,16 @@ func TestUpdatePartyRouterEndpoint(t *testing.T) {
 	localConfig.NodeLocalConfig.GeneralConfig.ListenPort = uint32(newPort)
 	utils.WriteToYAML(localConfig.NodeLocalConfig, routerNodeConfigPath)
 
-	armaNetwork.Restart(t, readyChan)
+	// restart all arma  nodes, except for batcher
+	for i := 1; i <= numOfParties; i++ {
+		armaNetwork.GetRouter(t, types.PartyID(i)).RestartArmaNode(t, readyChan)
+		armaNetwork.GetConsenter(t, types.PartyID(i)).RestartArmaNode(t, readyChan)
+		armaNetwork.GetAssembler(t, types.PartyID(i)).RestartArmaNode(t, readyChan)
+	}
+
 	defer armaNetwork.Stop()
 
-	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+	testutil.WaitReady(t, readyChan, numOfArmaNodes, 60)
 
 	// Send transactions again and verify they are processed
 

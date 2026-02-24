@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package ledger
 
 import (
+	"fmt"
 	"slices"
 
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
@@ -128,4 +129,5 @@ func (bla *BatchLedgerArray) List() ([]string, error) {
 
 func (bla *BatchLedgerArray) Close() {
 	bla.provider.Close()
+	fmt.Printf("bla.Close")
 }
