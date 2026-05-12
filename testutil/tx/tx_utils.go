@@ -47,7 +47,7 @@ func createPayloadHeader(ch *common.ChannelHeader, sh *common.SignatureHeader) *
 }
 
 func createStructuredPayload(data []byte, requestType common.HeaderType) *common.Payload {
-	payloadChannelHeader := createChannelHeader(requestType, 0, "channelID", 0)
+	payloadChannelHeader := createChannelHeader(requestType, 0, "arma", 0)
 	id, err := msp.NewSerializedIdentity("org1", []byte("cert"))
 	if err != nil {
 		panic(err)
