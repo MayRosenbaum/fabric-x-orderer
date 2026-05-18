@@ -72,7 +72,7 @@ func deterministicMarshall(msg proto.Message) []byte {
 }
 
 func CreateStructuredEnvelope(data []byte) *common.Envelope {
-	payload := createStructuredPayload(data, common.HeaderType_MESSAGE)
+	payload := createStructuredPayload(data, common.HeaderType_ENDORSER_TRANSACTION)
 	payloadBytes := deterministicMarshall(payload)
 	return &common.Envelope{
 		Payload:   payloadBytes,
