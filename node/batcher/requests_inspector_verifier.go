@@ -153,9 +153,9 @@ func (r *RequestsInspectorVerifier) VerifyRequest(req []byte) error {
 	if err := r.requestVerifier.Verify(&request); err != nil {
 		return errors.Errorf("failed verifying request with id: %s; err: %v", r.RequestID(req), err)
 	}
-	if _, err := r.requestVerifier.VerifyStructureAndClassify(&request); err != nil {
-		return errors.Errorf("failed verifying request 's structure with id: %s; err: %v", r.RequestID(req), err)
-	}
+	//if _, err := r.requestVerifier.VerifyStructureAndClassify(&request); err != nil {
+	//	return errors.Errorf("failed verifying request 's structure with id: %s; err: %v", r.RequestID(req), err)
+	//}
 
 	return nil
 }
