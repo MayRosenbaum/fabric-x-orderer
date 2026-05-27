@@ -8,8 +8,6 @@ package requestfilter
 
 import (
 	"fmt"
-	"github.com/hyperledger/fabric-x-orderer/testutil"
-
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-common/protoutil"
@@ -54,7 +52,7 @@ func (sf *SigFilter) VerifyAndClassify(request *comm.Request) (common.HeaderType
 	numOfTxs := 1000
 	txSize := 300
 	fmt.Printf("Creating tx service to emulate sig verification")
-	srv, err := testutil.NewSignedTransactionService(numOfTxs, txSize)
+	srv, err := NewSignedTransactionService(numOfTxs, txSize)
 	srv.VerifyTransaction()
 	return reqType, nil
 }
