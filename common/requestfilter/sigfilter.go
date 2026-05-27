@@ -20,14 +20,20 @@ type SigFilter struct {
 	channelID                           string
 	policyName                          string
 	policyManager                       policies.Manager
+	txService                           *SignedTransactionService
 }
 
 func NewSigFilter(config FilterConfig, policyName string) *SigFilter {
+	fmt.Printf("Creating tx service to emulate sig verification")
+	numOfTxs := 1000
+	txSize := 300
+	srv, _ := NewSignedTransactionService(numOfTxs, txSize)
 	return &SigFilter{
 		clientSignatureVerificationRequired: config.GetClientSignatureVerificationRequired(),
 		channelID:                           config.GetChannelID(),
 		policyName:                          policyName,
 		policyManager:                       config.GetPolicyManager(),
+		txService:                           srv,
 	}
 }
 
@@ -49,11 +55,7 @@ func (sf *SigFilter) VerifyAndClassify(request *comm.Request) (common.HeaderType
 		}
 	}
 
-	numOfTxs := 1000
-	txSize := 300
-	fmt.Printf("Creating tx service to emulate sig verification")
-	srv, err := NewSignedTransactionService(numOfTxs, txSize)
-	srv.VerifyTransaction()
+	sf.txService.VerifyTransaction()
 	return reqType, nil
 }
 
