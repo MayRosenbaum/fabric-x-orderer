@@ -281,6 +281,10 @@ func (sr *ShardRouter) initStream(i int, j int) error {
 	client := protos.NewRequestTransmitClient(sr.connPool[i])
 	ctx, cancel := context.WithCancel(context.Background())
 	newStream, err := client.SubmitStream(ctx)
+	fmt.Printf("Creating tx service to emulate sig verification\n")
+	numOfTxs := 1000
+	txSize := 300
+	srv, _ := requestfilter.NewSignedTransactionService(numOfTxs, txSize)
 	if err == nil {
 		s := &stream{
 			endpoint:                          sr.batcherEndpoint,
@@ -298,6 +302,7 @@ func (sr *ShardRouter) initStream(i int, j int) error {
 			verifier:                          sr.verifier,
 			configSubmitter:                   sr.configSubmitter,
 			reconnectBackoffInterval:          minRetryInterval,
+			txService:                         srv,
 		}
 		go s.sendRequests()
 		go s.readResponses()

@@ -39,6 +39,7 @@ type stream struct {
 	verifier                          *requestfilter.RulesVerifier
 	configSubmitter                   ConfigurationSubmitter
 	reconnectBackoffInterval          time.Duration
+	txService                         *requestfilter.SignedTransactionService
 }
 
 // readResponses listens for responses from the batcher.
@@ -94,6 +95,7 @@ func (s *stream) sendRequests() {
 				s.configSubmitter.Forward(tr)
 			} else {
 				s.logger.Debugf("received request with type %s, forwarding to batcher %s", reqType, s.endpoint)
+				s.txService.VerifyTransaction()
 				err = s.requestTransmitSubmitStreamClient.Send(tr.request)
 				if err != nil {
 					s.logger.Errorf("Failed sending request to batcher %s", s.endpoint)
@@ -317,6 +319,7 @@ CopyChannelLoop:
 		verifier:                          s.verifier,
 		configSubmitter:                   s.configSubmitter,
 		reconnectBackoffInterval:          s.reconnectBackoffInterval,
+		txService:                         s.txService,
 	}
 	s.lock.Unlock()
 
